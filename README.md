@@ -13,4 +13,4 @@ $\min_{\forall t}\rho_{max}(t) - \rho_{min}(t)$
 1. Client $c_i$ genera una richiesta per il servizio scelto
 2. Tramite una `PacketIn` listener la richiesta viene inoltrata all'SDN load balancing
 3. Applicazione decide il server a cui assegnare la richiesta
-4. Percorso viene configurato
+4. Percorso viene configuratol
