@@ -1,0 +1,11 @@
+ip addr add 10.0.0.200/24 dev eth0
+
+ip addr add 10.0.1.200/24 dev eth1
+
+ip route add default via 10.0.1.200 dev eth1
+
+#iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+
+#ip route add 20.0.1.0/24 dev eth1
+#ip route add 10.0.2.0/24 dev eth1
+
