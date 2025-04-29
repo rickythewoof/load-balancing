@@ -5,5 +5,5 @@ ovs-vsctl add-br sw1
 ovs-vsctl add-port sw1 eth0
 
 
-ovs-vsctl set-controller sw1 tcp:20.0.1.4:6653
+ovs-vsctl set-controller sw1 tcp:20.0.1.4
 
