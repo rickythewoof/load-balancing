@@ -34,5 +34,5 @@ class trafficMeter():
 	def send_stat_req(self):
 		self.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
 
-def launch(ip_src = "10.0.0.1", ip_dst = "10.0.0.2", time_period = 2, dpid = "7a-c4-ae-1c-40-46"):
+def launch(ip_src = "10.0.0.1", ip_dst = "10.0.0.2", time_period = 3, dpid = "7a-c4-ae-1c-40-46"):
 	trafficMeter(ip_src, ip_dst, time_period, dpid)
