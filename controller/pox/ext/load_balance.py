@@ -20,9 +20,6 @@ class LoadBalancer():
 		core.openflow.addListeners(self)
 		ip_service_match = of.ofp_match( ) 
 		ip_service_match.nw_dst = "192.168.42.0/24" 
-		self.load_per_srv = {}
-		self.host_location = {}
-		self.host_ip_mac = {}
 		self.config_timer()
 	
 	def config_timer(self, recurrence = 3):
@@ -33,12 +30,14 @@ class LoadBalancer():
 		if pkt.dst == public_ip: # Packet comes from the external net (not internal)
 			best_server = self.find_best_server()
 			if best_server is not None:
-				# Need to save the port from which the request came
+				src_port = event.port
+				# Need to save the port from which the request came (maybe encode in MAC?)
+				
 				msg = of.ofp_packet_out()
 				msg.data = ethernet()
 				msg.src = pkt.src
 				msg.dst = servers[best_server].ip
-				msg.actions.append(of.ofp_action_output(port = servers[best_server].port))
+				msg.actions.append(of.ofp_action_output(port = servers[best_server]['port']))
 				connection = event.connection
 				connection.send(msg)
 		else:	# It's a response, change the src to the public IP and send it back
@@ -64,13 +63,23 @@ class LoadBalancer():
 	'''
 	def _handle_ConnectionUp(self, event):
 		if (True):	# If is a server
-			self.create_server(event.connection)
+			self.create_server(event)
+
 		else:
 			# Sticazzi
 			pass
 
 	def create_server(self, event):
-		pass
+		pkt = event.parsed
+		srv_dpid = pkt.dpid
+		if srv_dpid in servers.keys():
+			print("srv already there, skipping")
+			return
+		servers[srv_dpid] = {}
+		servers[srv_dpid]["port"] = pkt.port
+		servers[srv_dpid]["ip"] = Null # Get server IP
+		servers[srv_dpid]["mac"] = Null # Get server MAC
+
 
 
 	'''
@@ -88,13 +97,5 @@ class LoadBalancer():
 		self.traffic = rec_bytes
 		print("IP flow rate: " + str(rate))
 
-class Server:
-	def __init__(self, dpid, ip):
-		self.dpid = dpid
-		self.ip = ip
-	
-	def get_load():
-		pass
-
 def launch():
-	core.registerNew(LoadBalancer)
+	core.registerNew(passLoadBalancer)
