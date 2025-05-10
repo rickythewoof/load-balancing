@@ -11,7 +11,9 @@ from pox.lib.util import dpidToStr
 import networkx as nx
 import numpy as np
 
+servers = {}
 load = {}
+public_ip = IpAddr("1.1.1.1")
 
 class LoadBalancer():
 	def __init__(self):
@@ -27,7 +29,49 @@ class LoadBalancer():
 		Timer(recurrence, self.send_stat_req, recurring=True)
 	
 	def _handle_PacketIn(self,event):
+		pkt = event.parsed
+		if pkt.dst == public_ip: # Packet comes from the external net (not internal)
+			best_server = self.find_best_server()
+			if best_server is not None:
+				# Need to save the port from which the request came
+				msg = of.ofp_packet_out()
+				msg.data = ethernet()
+				msg.src = pkt.src
+				msg.dst = servers[best_server].ip
+				msg.actions.append(of.ofp_action_output(port = servers[best_server].port))
+				connection = event.connection
+				connection.send(msg)
+		else:	# It's a response, change the src to the public IP and send it back
+			msg = of.ofp_packet_out()
+			msg.data = ethernet()
+			msg.src = public_ip
+			msg.dst = pkt.dst
+			msg.actions.append(of.ofp_action_output(port = Null )) # Get the port!
+			connection = event.connection
+			connection.send(msg)
+
+	'''
+		With a ConnectionUp we register the location of all servers
+		We save:
+			- DPID
+			- Port
+			- IP connection
+			(I'd use servers dict, or overall class?)
+			
+		We create:
+			- New entry on the load
+			- New entry on the servers tab
+	'''
+	def _handle_ConnectionUp(self, event):
+		if (True):	# If is a server
+			self.create_server(event.connection)
+		else:
+			# Sticazzi
+			pass
+
+	def create_server(self, event):
 		pass
+
 
 	'''
 		Load Balancing and flow analysis part
@@ -44,6 +88,13 @@ class LoadBalancer():
 		self.traffic = rec_bytes
 		print("IP flow rate: " + str(rate))
 
+class Server:
+	def __init__(self, dpid, ip):
+		self.dpid = dpid
+		self.ip = ip
+	
+	def get_load():
+		pass
 
 def launch():
 	core.registerNew(LoadBalancer)
