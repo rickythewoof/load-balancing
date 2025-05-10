@@ -19,7 +19,7 @@ class LoadBalancer():
 	def __init__(self):
 		core.openflow.addListeners(self)
 		ip_service_match = of.ofp_match( ) 
-		ip_service_match.nw_dst = "192.168.42.0/24" 
+		ip_service_match.nw_dst = public_ip 
 		self.config_timer()
 	
 	def config_timer(self, recurrence = 3):
