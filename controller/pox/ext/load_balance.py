@@ -13,7 +13,7 @@ import numpy as np
 
 servers = {}
 load = {}
-public_ip = IpAddr("1.1.1.1")
+public_ip = IpAddr("10.0.0.1")
 
 class LoadBalancer():
 	def __init__(self):
@@ -27,7 +27,9 @@ class LoadBalancer():
 	
 	def _handle_PacketIn(self,event):
 		pkt = event.parsed
-		if pkt.dst == public_ip: # Packet comes from the external net (not internal)
+		if pkt.type == ethernet.ARP_TYPE 
+			pass
+		elif pkt.dst == public_ip: # Packet comes from the external net (not internal)
 			best_server = self.find_best_server()
 			if best_server is not None:
 				src_port = event.port
@@ -62,12 +64,10 @@ class LoadBalancer():
 			- New entry on the servers tab
 	'''
 	def _handle_ConnectionUp(self, event):
-		if (True):	# If is a server
-			self.create_server(event)
+		self.create_flow_mod(event)
 
-		else:
-			# Sticazzi
-			pass
+	def create_flow_mod(self, event):
+		pass
 
 	def create_server(self, event):
 		pkt = event.parsed
