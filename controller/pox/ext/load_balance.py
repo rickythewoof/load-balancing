@@ -3,7 +3,7 @@ from pox.core import core
 from pox.lib.recoco import Timer
 from pox.lib.revent.revent import EventMixin
 from pox.lib.revent.revent import Event
-from pox.lib.addresses import EthAddr
+from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.arp import arp
 from pox.lib.packet.lldp import lldp
@@ -13,6 +13,7 @@ import numpy as np
 
 servers = {}
 load = {}
+switch_mac = MacAddr()
 public_ip = IpAddr("1.1.1.1")
 
 class LoadBalancer():
@@ -27,6 +28,14 @@ class LoadBalancer():
 	
 	def _handle_PacketIn(self,event):
 		pkt = event.parsed
+		if pkt.type == ethernet.ARP_TYPE and pkt.dst == EthAddr("00:00:00:00:11:11"):
+			arp_msg = pkt.payload
+			if arp_msg.opcode == arp.REPLY:
+				ip_host = arp_msg.protosrc.toStr()
+				mac_host = arp_msg.hwsrc.toStr()
+				dpid = dpidToStr(event.dpid)
+				self.host_location[ip_host] = event.dpid
+				self.host_ip_mac[ip_host] = mac_host
 		if pkt.dst == public_ip: # Packet comes from the external net (not internal)
 			best_server = self.find_best_server()
 			if best_server is not None:
