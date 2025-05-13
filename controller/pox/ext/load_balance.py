@@ -3,7 +3,7 @@ from pox.core import core
 from pox.lib.recoco import Timer
 from pox.lib.revent.revent import EventMixin
 from pox.lib.revent.revent import Event
-from pox.lib.addresses import EthAddr
+from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.arp import arp
 from pox.lib.packet.lldp import lldp

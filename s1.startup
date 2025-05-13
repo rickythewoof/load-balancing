@@ -1,4 +1,5 @@
 ip addr add 20.0.1.1/24 dev eth2
+echo "127.0.0.1 $(hostname)" | tee -a /etc/hosts
 
 /usr/share/openvswitch/scripts/ovs-ctl --system-id=random start
 ovs-vsctl add-br s1
