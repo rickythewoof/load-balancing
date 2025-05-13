@@ -1,6 +1,5 @@
 import pox.openflow.libopenflow_01 as of
 from pox.core import core
-from pox.lib.revent.revent import EventMixin
 from pox.lib.addresses import EthAddr, IPAddr
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.arp import arp
@@ -75,6 +74,7 @@ class ArpResponder(object):
                 core.LoadBalancer.servers[no]['ip'] = str(arp_packet.protosrc)
                 core.LoadBalancer.servers[no]['mac'] = str(arp_packet.hwsrc)
                 core.LoadBalancer.servers[no]['port'] = event.port
+                core.LoadBalancer.servers[no]['capacity'] = 1000 #1000 kbps
                 log.info("added server = {}".format(core.LoadBalancer.servers[no]))
 
 

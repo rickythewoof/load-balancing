@@ -16,7 +16,23 @@ class LoadBalancer():
 
 	servers_discovered = 0
 	servers = {}
+	
+	'''
+	Load dovrebbe avere una forma deel tipo:
+	key: server_id
+	value:
+		- service1 : load
+		- service2 : load
+		...
+		- serviceN : load 
+
+	services are called through the TCP port,
+	so we don't need a fancy way to encode service id
+	on the packet in itself
+	'''
+
 	load = {}
+
 
 	def __init__(self):
 		core.openflow.addListeners(self)
