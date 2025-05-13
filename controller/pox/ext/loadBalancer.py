@@ -50,7 +50,8 @@ class LoadBalancer():
 				connection = event.connection
 				connection.send(msg)
 				log.info("packet redirected to {}".format(self.servers[srv_no]['ip']))
-		else:	# It's a response, change the src to the public IP and send it back
+				return
+		elif ip_pkt.srcip in [srv['ip'] for srv in self.servers.values()]:	# It's a response, change the src to the public IP and send it back
 			msg = of.ofp_packet_out()
 			
 			ip_pkt.srcip = EXT_GW_IP
@@ -64,6 +65,7 @@ class LoadBalancer():
 			msg.actions.append(of.ofp_action_output(port = 1 )) # Assumption: this is outside
 			connection = event.connection
 			connection.send(msg)
+			return
 
 	'''
 		With a ConnectionUp we register the location of all servers
@@ -78,7 +80,7 @@ class LoadBalancer():
 			- New entry on the servers tab
 	'''
 	def _handle_ConnectionUp(self, event):
-		self.get_server_info(event, max_servers = 1)
+		self.get_server_info(event, max_servers = 10)
 
 	def get_server_info(self, event, max_servers):
 		for s in range(1, max_servers +1):
@@ -116,8 +118,7 @@ class LoadBalancer():
 		print("IP flow rate: " + str(rate))
 	
 	def get_best_server(self):
-		for n in self.servers.keys():
-			return n
+		return 1
 
 def launch():
 	core.registerNew(LoadBalancer)
