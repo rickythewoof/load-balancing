@@ -1,10 +1,8 @@
 ip addr add 20.0.1.4/24 dev eth0
 
 
-scp shared/arpResponder.py pox/ext/
 
-scp shared/simpleLoadBalancer.py pox/ext/
 
-/pox/pox.py samples.pretty_log arpResponder simpleLoadBalancer    openflow.of_01 -port=6653 
+/pox/pox.py samples.pretty_log arpResponder loadBalancer    openflow.of_01 -port=6653 
 
 

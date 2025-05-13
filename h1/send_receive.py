@@ -2,11 +2,7 @@ from scapy.all import *
 from threading import Thread
 
 def send_pacchetto():
-<<<<<<< HEAD
     frame = Ether(dst="00:00:00:00:00:01")/IP(src="10.0.0.2",dst="10.0.0.1")
-=======
-    frame = Ether(dst="11:22:33:44:55:66")/IP(src="10.0.0.2",dst="10.0.255.255")
->>>>>>> no_server_gateway
     sendp(frame, iface="eth0")
 
 def stampa_cattura():
