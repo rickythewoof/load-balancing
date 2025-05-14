@@ -78,7 +78,7 @@ class LoadBalancer():
 			eth.type = ethernet.IP_TYPE
 			eth.payload = ip_pkt
 			msg.data = eth
-			msg.actions.append(of.ofp_action_output(port = 1 )) # Assumption: this is outside
+			msg.actions.append(of.ofp_action_output(port = 1)) # Assumption: this is outside
 			connection = event.connection
 			connection.send(msg)
 			return
@@ -114,9 +114,6 @@ class LoadBalancer():
 			msg.data = ether.pack()
 			msg.actions.append(of.ofp_action_output(port = 2))
 			event.connection.send(msg)
-
-
-
 
 	'''
 		Load Balancing and flow analysis part
