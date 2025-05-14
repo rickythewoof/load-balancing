@@ -1,0 +1,4 @@
+ip link set eth0 address 00:00:30:30:01:11
+ip addr add 10.0.0.2/16 dev eth0
+ip route add default via 10.0.0.1 dev eth0
+

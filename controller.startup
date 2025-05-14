@@ -1,11 +1,4 @@
 ip addr add 20.0.1.4/24 dev eth0
 
 
-
-/pox/pox.py samples.pretty_log openflow.discovery forwarding.l2_learning openflow.of_01 -port=6653
-
-
-
-
-tcpdump -i eth0 -w /shared/controller.pcap &
-
+/pox/pox.py samples.pretty_log arpResponder loadBalancer openflow.of_01 -port=6653 
