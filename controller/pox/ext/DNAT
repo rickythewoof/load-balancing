@@ -1,0 +1,48 @@
+DNAT
+riscrittura ip dest con quello di uno specifco server di backeend(192.168.1.1)
+riscrittura src_mac address con quello del mac address del server centrale che funhge da reverse proxy (per noi sarà  SERVER_GW_MAC)
+Riscrittura dst_mac address: imposta il MAC destinazione con quello del backend (ottenuto tramite ARP), per permettere il delivery corretto nella rete locale.
+
+salvatggio stato della connessione del client(struttra dati chr associa un socket (srcip,dstip,srctport,desttport) al mac address del client)
+Altri header inalterati
+
+SNAT 
+riscrittura ip src del frame con qullo dle server che funge da proxy (per noi sarà CLIENT_GW_IP)
+riscrittura src_mac mac address con quello del server che funge da proxy (CLIENT_GW_MAC)
+ripristino stato connessione per sovrascriber eil campo eth_dest con quelllo del cliet che ha orginarimente emsso la richiesta
+
+
+
+
+
+✅ DNAT
+
+Obiettivo: inoltrare il pacchetto in arrivo dal client verso un backend, mascherando la destinazione ma mantenendo la trasparenza della connessione.
+Azioni:
+
+    🔁 Riscrittura IP di destinazione: sostituisci l’indirizzo IP di destinazione con quello di uno specifico server di backend (es. 192.168.1.1).
+
+    🔁 Riscrittura MAC sorgente (livello 2): imposta il MAC sorgente del frame Ethernet con quello del server proxy (es. SERVER_GW_MAC), perché è il proxy che inoltra fisicamente il pacchetto.
+
+    🔁 Riscrittura MAC destinazione: imposta il MAC destinazione con quello del backend (ottenuto tramite ARP), per permettere il delivery corretto nella rete locale.
+
+    💾 Salvataggio dello stato della connessione:
+
+        Associazione della 5-tuple (src_ip, src_port, dst_ip, dst_port, protocol) al contesto del client.
+
+        Questo stato include anche l’IP e MAC del client (se rilevabile), per consentire la risposta corretta in SNAT.
+
+    ✅ Altri header (TCP/UDP/Layer 4) rimangono inalterati.
+
+✅ SNAT (path di ritorno)
+
+Obiettivo: ricevere il pacchetto di risposta dal backend e riscriverlo in modo che appaia come proveniente dal proxy (non dal backend), mantenendo la sessione aperta e trasparente per il client.
+Azioni:
+
+    🔁 Riscrittura IP sorgente: sostituisci l’IP sorgente del pacchetto con l’IP pubblico del reverse proxy (CLIENT_GW_IP), affinché il client creda che la risposta venga dal proxy stesso.
+
+    🔁 Riscrittura MAC sorgente: imposta il MAC sorgente del frame Ethernet con quello del proxy (CLIENT_GW_MAC).
+
+    🔁 Riscrittura MAC destinazione: imposta il MAC destinazione con quello del client originario, recuperato dalla tabella conntrack o sessione salvata nel DNAT.
+
+    🧠 Recupero dello stato connessione: utilizza la conntrack table (o equivalente) per identificare la connessione e ricostruire l’header Ethernet corretto

@@ -4,10 +4,13 @@ from pox.lib.addresses import EthAddr, IPAddr
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.arp import arp
 
+
+
 EXT_GW_IP = IPAddr("10.0.0.1")
 EXT_GW_MAC = EthAddr("00:00:00:00:00:01")
 INT_GW_IP = IPAddr("192.168.0.1")
 INT_GW_MAC = EthAddr("01:00:00:00:00:01")
+
 
 log = core.getLogger()
 
@@ -15,6 +18,24 @@ class ArpResponder(object):
     def __init__(self):
         core.openflow.addListeners(self)
         log.info("modulo avviato con successo!\n")
+
+
+    def _handle_ConnectionUp(self,event):
+        self.install_flow_rule(event.dpid)
+        log.info("Istruisco il data-plane a riderezxionare verso il controller i pacchetti ARP REQUEST!\n")
+
+
+    def install_flow_rule(self, dpid):
+        msg = of.ofp_flow_mod()
+        msg.priority = 50000
+        match = of.ofp_match()
+        match.dl_type = 0x0806  # ARP
+        match.dl_dst = EthAddr.BROADCAST
+        msg.match = match
+        msg.actions = [of.ofp_action_output(port=of.OFPP_CONTROLLER)]
+        core.openflow.sendToDPID(dpid, msg)
+
+
 
     def _handle_PacketIn(self, event):
         packet = event.parsed
@@ -66,17 +87,7 @@ class ArpResponder(object):
                 else:
                     log.error("who is it for??")
                     return
-            if arp_packet.opcode == arp.REPLY:
-                no = core.LoadBalancer.servers_discovered
-                no = no + 1
-                core.LoadBalancer.servers_discovered = no
-                core.LoadBalancer.servers[no] = {}
-                core.LoadBalancer.servers[no]['ip'] = str(arp_packet.protosrc)
-                core.LoadBalancer.servers[no]['mac'] = str(arp_packet.hwsrc)
-                core.LoadBalancer.servers[no]['port'] = event.port
-                core.LoadBalancer.servers[no]['capacity'] = 1000 #1000 kbps
-                log.info("added server = {}".format(core.LoadBalancer.servers[no]))
-
+            
 
 def launch():
     core.registerNew(ArpResponder)

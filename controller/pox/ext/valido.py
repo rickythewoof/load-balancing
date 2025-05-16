@@ -55,16 +55,8 @@ class LoadBalancer():
                     ip_pkt.dstip = IPAddr(self.servers[srv_no]['ip'])
 
                     l4 = ip_pkt.payload
-                    #if isinstance(l4, (tcp, udp)):
-                        # Se il payload è un oggetto packet, serializzalo
-                     #   if l4.payload is not None and not isinstance(l4.payload, (bytes, str)):
-                            #l4.payload = l4.payload.pack()
-                        #elif l4.payload is None:
-                            #l4.payload = b''
-
-                        #l4.csum = 0
-                        #ip_pkt.csum = 0
-                        #ip_pkt.len = None
+                    if isinstance(l4, (tcp, udp)):
+                        l4.csum = 0  # Disattiva il calcolo del checksum per evitare crash
 
 
 
