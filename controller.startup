@@ -1,7 +1,7 @@
 ip addr add 20.0.1.4/24 dev eth0
 
 
-/pox/pox.py samples.pretty_log arpResponder loadBalancer openflow.of_01 -port=6653 
+/pox/pox.py samples.pretty_log virtGateway loadBalancer openflow.of_01 -port=6653 
 
 
 # watch tail /var/log/startup.log

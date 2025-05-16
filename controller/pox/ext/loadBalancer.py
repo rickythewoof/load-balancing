@@ -20,6 +20,7 @@ class LoadBalancer:
         self.servers = {}          # id -> {ip, mac, port, capacity}
         self.conn_track = {}       # (client_ip, client_port, server_ip, server_port) -> client_mac
         self.next_server_id = 1
+        self.load = {}
         core.openflow.addListeners(self)
         Timer(3, self.send_stats_request, recurring=True)
 
@@ -75,10 +76,21 @@ class LoadBalancer:
                server['ip'], tcp_pkt.dstport)
         self.conn_track[key] = event.parsed.src
 
-        # Drop RESET and FINISHED TCP connections
-        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
-            self.conn_track.pop(key, None)
-            log.info(f"Cleaned up connection {key}")
+        # Install flow for this client -> server connection
+        match = of.ofp_match()
+        match.dl_type = 0x0800
+        match.nw_proto = 6
+        match.nw_src = ip_pkt.srcip
+        match.nw_dst = CLIENT_GW_IP
+        match.tp_src = tcp_pkt.srcport
+        match.tp_dst = tcp_pkt.dstport
+
+        actions = [
+            of.ofp_action_nw_addr.set_dst(IPAddr(server['ip'])),
+            of.ofp_action_dl_addr.set_src(SERVER_GW_MAC),
+            of.ofp_action_dl_addr.set_dst(EthAddr(server['mac'])),
+            of.ofp_action_output(port=server['port'])
+        ]
 
         # Rewrite destination
         ip_pkt.payload = tcp_pkt
@@ -91,10 +103,19 @@ class LoadBalancer:
 
         # Send out
         msg = of.ofp_packet_out()
-        msg.data=eth.pack()
+        try:
+            msg.data=eth.pack()
+        except Exception as e:
+            log.error(f"[CHKSUM_ERROR] Caught exception: {e}")
+            return
         msg.actions.append(of.ofp_action_output(port=server['port']))
         event.connection.send(msg)
         log.info(f"Forwarded client->server via {sid}")
+        
+        # Drop RESET and FINISHED TCP connections and remove flow rule
+        if not tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
+            # Useful to install flow rules
+            self.install_flow(event, match, actions)
 
     def handle_server(self, event, ip_pkt, tcp_pkt):
         # Get our original client MAC
@@ -104,11 +125,23 @@ class LoadBalancer:
         if not client_mac:
             log.warn(f"Connection not tracked: {key}")
             return
-        # Drop RESET and FINISHED TCP connections
-        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
-            self.conn_track.pop(key, None)
-            log.info(f"Cleaned up connection {key}")
         
+        # Install flow for this server -> client answer
+        match = of.ofp_match()
+        match.dl_type = 0x0800
+        match.nw_proto = 6
+        match.nw_src = ip_pkt.srcip
+        match.nw_dst = ip_pkt.dstip
+        match.tp_src = tcp_pkt.srcport
+        match.tp_dst = tcp_pkt.dstport
+
+        actions = [
+            of.ofp_action_nw_addr.set_src(CLIENT_GW_IP),
+            of.ofp_action_dl_addr.set_src(CLIENT_GW_MAC),
+            of.ofp_action_dl_addr.set_dst(client_mac),
+            of.ofp_action_output(port=1)
+        ]
+
         # SNAT: rewrite source
         ip_pkt.payload = tcp_pkt
         ip_pkt.srcip = CLIENT_GW_IP
@@ -120,16 +153,27 @@ class LoadBalancer:
 
         # Send back to client (assumption: port 1)
         msg = of.ofp_packet_out()
-        msg.data=eth.pack()
+        try:
+            msg.data=eth.pack()
+        except Exception as e:
+            log.error(f"[CHKSUM_ERROR] Caught exception: {e}")
+            return
         msg.actions.append(of.ofp_action_output(port=1))
         event.connection.send(msg)
         log.info(f"Forwarded server->client for {key}")
 
+        # Drop RESET and FINISHED TCP connections
+        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
+            self.conn_track.pop(key, None)
+            log.info(f"Cleaned up connection {key}")
+        else: # It's not an end, it's useful to install flow rules
+            self.install_flow(event, match, actions)
+
+
     def select_server(self):
-        # Simple round-robin or least-loaded
         if not self.servers:
             return None
-        # pick first for now
+        # Return first of the non occupied servers
         return next(iter(self.servers))
 
     def discover_servers(self, event, max_servers):
@@ -151,10 +195,27 @@ class LoadBalancer:
             con.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
 
     def _handle_FlowStatsReceived(self, event):
-        # remains unchanged
-        pass
-    def add_flow_rule(self,ip_src, port_src, srv_id, port_dst):
-        pass
+        self.load = {}
+        for stat in event.stats:
+            if stat.match.nw_src is None:
+                continue
+            log.info(f"Src: {stat.match.nw_src}:{stat.match.tp_src} -> Dst: {stat.match.nw_dst}:{stat.match.tp_dst}, Port: {stat.match.in_port}, Packets: {stat.packet_count}, Bytes: {stat.byte_count}")
+            # Get server ID from src_ip
+            # Update the values for the services (port)
+            for sid in self.servers:
+                if self.servers[sid]['ip'] == str(stat.match.nw_src):
+                    if self.load[sid] is None:
+                        self.load[sid] = {}
+                    self.load[sid][stat.match.tp_src] = stat.byte_count
+        
+    def install_flow(self, event, match, actions):
+        msg = of.ofp_flow_mod()
+        msg.priority = 5000
+        msg.idle_timeout = 5 #  Tune timeout to not flood requests
+        msg.match = match
+        msg.actions = actions
+        event.connection.send(msg)
+        log.info(f"Successfully installed flow mod {match.nw_src}:{match.tp_dst}")
 
 def launch():
     core.registerNew(LoadBalancer)

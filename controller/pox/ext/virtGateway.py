@@ -59,10 +59,13 @@ class ArpResponder(object):
                     ether.payload = arp_reply
 
                     msg = of.ofp_packet_out()
-                    msg.data = ether.pack()
+                    try:
+                        msg.data=ether.pack()
+                    except Exception as e:
+                        log.error(f"[CHKSUM_ERROR] Caught exception: {e}")
                     msg.actions.append(of.ofp_action_output(port=event.ofp.in_port))
                     event.connection.send(msg)
-                    log.info("ARP SPOOFING ESTERNO REALIZZATO")
+                    log.info("Sending ARP_REPLY to client")
                 elif arp_packet.protodst == INT_GW_IP:
                     arp_reply = arp()
                     arp_reply.hwtype = arp.HW_TYPE_ETHERNET
@@ -80,10 +83,13 @@ class ArpResponder(object):
                     ether.payload = arp_reply
 
                     msg = of.ofp_packet_out()
-                    msg.data = ether.pack()
+                    try:
+                        msg.data=ether.pack()
+                    except Exception as e:
+                        log.error(f"[CHKSUM_ERROR] Caught exception: {e}")
                     msg.actions.append(of.ofp_action_output(port=event.ofp.in_port))
                     event.connection.send(msg)
-                    log.info("ARP SPOOFING INTERNO REALIZZATO")
+                    log.info("Sending ARP_REPLY to server")
                 else:
                     log.error("who is it for??")
                     return
