@@ -6,8 +6,7 @@ from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.arp import arp
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.tcp import tcp
-from pox.lib.packet.udp import udp
-
+import time
 
 log = core.getLogger()
 
@@ -16,155 +15,146 @@ CLIENT_GW_MAC = EthAddr("00:00:00:00:00:01")
 SERVER_GW_IP = IPAddr("192.168.0.1")
 SERVER_GW_MAC = EthAddr("01:00:00:00:00:01")
 
-
-class LoadBalancer():
-
-    servers_discovered = 0
-    servers = {}  # id: {mac, ip, port}
-    conn_track = {}  # key: 5-tuple, value: client MAC
-
-    load = {}
-
+class LoadBalancer:
     def __init__(self):
+        self.servers = {}          # id -> {ip, mac, port, capacity}
+        self.conn_track = {}       # (client_ip, client_port, server_ip, server_port) -> client_mac
+        self.next_server_id = 1
         core.openflow.addListeners(self)
+        Timer(3, self.send_stats_request, recurring=True)
 
     def _handle_ConnectionUp(self, event):
-        self.get_server_info(event, max_servers=10)
-
-    def config_timer(self, recurrence=3):
-        Timer(recurrence, self.send_stat_req, recurring=True)
+        self.discover_servers(event, max_servers=10)
 
     def _handle_PacketIn(self, event):
         pkt = event.parsed
-        ip_pkt = pkt.find('ipv4')
-        eth_pkt = pkt.find('ethernet')
-
-        if ip_pkt:
-            log.info("Got IP packet\t{} -> {}".format(ip_pkt.srcip, ip_pkt.dstip))
-
-            if ip_pkt.dstip == CLIENT_GW_IP:  # DNAT
-                l4 = ip_pkt.payload
-                if isinstance(l4, (tcp, udp)):
-                    conn_key = (str(ip_pkt.srcip), l4.srcport, str(ip_pkt.dstip), l4.dstport, ip_pkt.protocol)
-                    self.conn_track[conn_key] = eth_pkt.src
-                    log.info("Connessione tracciata: %s => %s", conn_key, eth_pkt.src)
-
-                srv_no = self.get_best_server()
-
-                if srv_no is not None:
-                    ip_pkt.dstip = IPAddr(self.servers[srv_no]['ip'])
-
-                    l4 = ip_pkt.payload
-                    #if isinstance(l4, (tcp, udp)):
-                        # Se il payload è un oggetto packet, serializzalo
-                     #   if l4.payload is not None and not isinstance(l4.payload, (bytes, str)):
-                            #l4.payload = l4.payload.pack()
-                        #elif l4.payload is None:
-                            #l4.payload = b''
-
-                        #l4.csum = 0
-                        #ip_pkt.csum = 0
-                        #ip_pkt.len = None
-
-
-
-                    eth = ethernet()
-                    eth.type = ethernet.IP_TYPE
-                    eth.src = SERVER_GW_MAC
-                    eth.dst = EthAddr(self.servers[srv_no]['mac'])
-                    eth.payload = ip_pkt
-
-                    msg = of.ofp_packet_out()
-                    msg.data = eth.pack()
-                    msg.actions.append(of.ofp_action_output(port=self.servers[srv_no]['port']))
-                    event.connection.send(msg)
-
-                    log.info("Packet redirected: client IP {} -> server IP {} (MAC {}, port {}), original dst IP {}"
-                             .format(ip_pkt.srcip,
-                                     self.servers[srv_no]['ip'],
-                                     self.servers[srv_no]['mac'],
-                                     self.servers[srv_no]['port'],
-                                     SERVER_GW_IP))
-                    return
-
-            elif ip_pkt.srcip in [srv['ip'] for srv in self.servers.values()]:  # SNAT
-                log.info("Sto realizzando il reverse Path")
-                ip_pkt.srcip = CLIENT_GW_IP
-                l4 = ip_pkt.payload
-                conn_key = None
-                client_mac = None
-
-                if isinstance(l4, (tcp, udp)):
-                    conn_key = (str(ip_pkt.dstip), l4.dstport, str(ip_pkt.srcip), l4.srcport, ip_pkt.protocol)
-                    client_mac = self.conn_track.get(conn_key)
-
-                if client_mac is None:
-                    log.warn(" Connessione non trovata nella conn_track: %s. Pacchetto scartato.", conn_key)
-                    return
-
-                
-
-                eth = ethernet()
-                eth.type = ethernet.IP_TYPE
-                eth.src = CLIENT_GW_MAC
-                eth.dst = EthAddr(client_mac)
-                eth.payload = ip_pkt  
-
-                msg = of.ofp_packet_out()
-                msg.data = eth.pack()
-                msg.actions.append(of.ofp_action_output(port=1))  # Assumed client port
-                event.connection.send(msg)
-
-                log.info("SNAT: risposta del server inoltrata a %s (MAC %s)", ip_pkt.dstip, client_mac)
-                return
-
-        arp_pkt = pkt.find('arp')
-        if arp_pkt and arp_pkt.opcode == arp.REPLY:
-            no = self.servers_discovered + 1
-            self.servers_discovered = no
-            self.servers[no] = {
-                'ip': str(arp_pkt.protosrc),
-                'mac': str(arp_pkt.hwsrc),
-                'port': event.port,
-                'capacity': 1000
-            }
-            log.info("Server scoperto: %s", self.servers[no])
+        # ARP handling
+        arp_req = pkt.find(arp)
+        if arp_req and arp_req.opcode == arp.REPLY:
+            self.handle_arp_reply(arp_req, event.port)
             return
 
-        log.warn("Packet is neither IPv4 nor ARP reply, ignoring...")
+        ip_pkt = pkt.find(ipv4)
+        tcp_pkt = pkt.find(tcp)
+        # Only handle TCP over IPv4 ( Firewall Rule *wink wink* )
+        if not ip_pkt or not tcp_pkt:
+            return
 
-    def get_server_info(self, event, max_servers):
-        for s in range(1, max_servers + 1):
-            arp_req = arp()
-            arp_req.hwsrc = SERVER_GW_MAC
-            arp_req.opcode = arp.REQUEST
-            arp_req.protosrc = SERVER_GW_IP
-            arp_req.protodst = IPAddr(f"192.168.{s}.1")
+        # From client to gateway: DNAT
+        if ip_pkt.dstip == CLIENT_GW_IP:
+            self.handle_client(event, ip_pkt, tcp_pkt)
+            return
 
-            ether = ethernet()
-            ether.type = ethernet.ARP_TYPE
-            ether.dst = EthAddr.BROADCAST
-            ether.src = SERVER_GW_MAC
-            ether.payload = arp_req
+        # From server to client: SNAT
+        if ip_pkt.srcip in [s['ip'] for s in self.servers.values()]:
+            self.handle_server(event, ip_pkt, tcp_pkt)
+            return
 
-            msg = of.ofp_packet_out()
-            msg.data = ether.pack()
+    def handle_arp_reply(self, arp_pkt, port):
+        sid = self.next_server_id
+        self.next_server_id += 1
+        self.servers[sid] = {
+            'ip': str(arp_pkt.protosrc),
+            'mac': str(arp_pkt.hwsrc),
+            'port': port,
+            'capacity': 1000 #kbps
+        }
+        log.info(f"Server discovered #{sid}: {self.servers[sid]}")
+
+    def handle_client(self, event, ip_pkt, tcp_pkt):
+        # Choose a server based on load_balancing formula
+        sid = self.select_server()
+        if sid is None:
+            log.warn("No servers available (Shouldn't be possible, all requests are handled)")
+            return
+
+        server = self.servers[sid]
+        
+        # Connection tracking over conn_track
+        key = (str(ip_pkt.srcip), tcp_pkt.srcport,
+               server['ip'], tcp_pkt.dstport)
+        self.conn_track[key] = event.parsed.src
+
+        # Drop RESET and FINISHED TCP connections
+        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
+            self.conn_track.pop(key, None)
+            log.info(f"Cleaned up connection {key}")
+
+        # Rewrite destination
+        ip_pkt.payload = tcp_pkt
+        ip_pkt.dstip = IPAddr(server['ip'])
+        # Build Ethernet frame
+        eth = ethernet(type=ethernet.IP_TYPE,
+                       src=SERVER_GW_MAC,
+                       dst=EthAddr(server['mac']))
+        eth.payload = ip_pkt
+
+        # Send out
+        msg = of.ofp_packet_out()
+        msg.data=eth.pack()
+        msg.actions.append(of.ofp_action_output(port=server['port']))
+        event.connection.send(msg)
+        log.info(f"Forwarded client->server via {sid}")
+
+    def handle_server(self, event, ip_pkt, tcp_pkt):
+        # Get our original client MAC
+        key = (str(ip_pkt.dstip), tcp_pkt.dstport,
+               str(ip_pkt.srcip), tcp_pkt.srcport)
+        client_mac = self.conn_track.get(key)
+        if not client_mac:
+            log.warn(f"Connection not tracked: {key}")
+            return
+        # Drop RESET and FINISHED TCP connections
+        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
+            self.conn_track.pop(key, None)
+            log.info(f"Cleaned up connection {key}")
+        
+        # SNAT: rewrite source
+        ip_pkt.payload = tcp_pkt
+        ip_pkt.srcip = CLIENT_GW_IP
+        # Build Ethernet
+        eth = ethernet(type=ethernet.IP_TYPE,
+                       src=CLIENT_GW_MAC,
+                       dst=EthAddr(client_mac))
+        eth.payload = ip_pkt
+
+        # Send back to client (assumption: port 1)
+        msg = of.ofp_packet_out()
+        msg.data=eth.pack()
+        msg.actions.append(of.ofp_action_output(port=1))
+        event.connection.send(msg)
+        log.info(f"Forwarded server->client for {key}")
+
+    def select_server(self):
+        # Simple round-robin or least-loaded
+        if not self.servers:
+            return None
+        # pick first for now
+        return next(iter(self.servers))
+
+    def discover_servers(self, event, max_servers):
+        for i in range(1, max_servers + 1):
+            arp_req = arp(hwsrc=SERVER_GW_MAC,
+                          opcode=arp.REQUEST,
+                          protosrc=SERVER_GW_IP,
+                          protodst=IPAddr(f"192.168.{i}.1"))
+            eth = ethernet(type=ethernet.ARP_TYPE,
+                           src=SERVER_GW_MAC,
+                           dst=EthAddr.BROADCAST)
+            eth.payload = arp_req.pack()
+            msg = of.ofp_packet_out(data=eth.pack())
             msg.actions.append(of.ofp_action_output(port=2))
             event.connection.send(msg)
 
-    def send_stat_req(self):
+    def send_stats_request(self):
         for con in core.openflow._connections.values():
             con.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
 
     def _handle_FlowStatsReceived(self, event):
-        pass  # Stub: da implementare se vuoi analizzare i flussi
-
-    def get_best_server(self):
-        if not self.servers:
-            log.warn("Nessun server disponibile per il bilanciamento")
-            return None
-        return list(self.servers.keys())[0]  # semplice scelta del primo
-
+        # remains unchanged
+        pass
+    def add_flow_rule(self,ip_src, port_src, srv_id, port_dst):
+        pass
 
 def launch():
     core.registerNew(LoadBalancer)
