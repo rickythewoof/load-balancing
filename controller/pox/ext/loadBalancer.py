@@ -64,7 +64,7 @@ class LoadBalancer:
 
     def handle_client(self, event, ip_pkt, tcp_pkt):
         # Choose a server based on load_balancing formula
-        sid = self.select_server()
+        sid = self.select_server(ip_pkt, tcp_pkt)
         if sid is None:
             log.warn("No servers available (Shouldn't be possible, all requests are handled)")
             return
@@ -110,7 +110,7 @@ class LoadBalancer:
             return
         msg.actions.append(of.ofp_action_output(port=server['port']))
         event.connection.send(msg)
-        log.info(f"Forwarded client->server via {sid}")
+        log.info(f"Forwarded client->server via {key}")
         
         # Drop RESET and FINISHED TCP connections and remove flow rule
         if not tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
@@ -160,7 +160,7 @@ class LoadBalancer:
             return
         msg.actions.append(of.ofp_action_output(port=1))
         event.connection.send(msg)
-        log.info(f"Forwarded server->client for {key}")
+        # log.info(f"Forwarded server->client for {key}")
 
         # Drop RESET and FINISHED TCP connections
         if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
@@ -170,11 +170,44 @@ class LoadBalancer:
             self.install_flow(event, match, actions)
 
 
-    def select_server(self):
+    def select_server(self, ip_pkt, tcp_pkt):
         if not self.servers:
             return None
         # Return first of the non occupied servers
-        return next(iter(self.servers))
+        ip_src = str(ip_pkt.srcip)
+        port_src = tcp_pkt.srcport
+        port_dst = tcp_pkt.dstport
+
+        # check first if there is already a server with an active connection
+        # to this client
+
+        for key in self.conn_track:
+            src_ip, src_port, srv_ip, dst_port = key
+            if src_ip == ip_src and src_port == port_src and dst_port == port_dst:
+                log.info("Already found an active connection")
+                for server_id, server in self.servers.items():
+                    if server['ip'] == srv_ip:
+                        return server_id
+        
+        # Calculate load for every server and return the lightest
+        val = {}
+        for sid in self.servers:
+            val[sid] = 0
+            if self.load.get(sid):
+                for vals in self.load[sid].values():
+                    val[sid] = val[sid] + vals
+            val[sid] = val[sid] / self.servers[sid]['capacity']
+    
+        log.info(f"load overall is {val}")
+
+        min_load = None
+        min_sid = None
+        for sid, load in val.items():
+            if min_load is None or load < min_load:
+                min_load = load
+                min_sid = sid
+
+        return min_sid
 
     def discover_servers(self, event, max_servers):
         for i in range(1, max_servers + 1):
@@ -197,17 +230,17 @@ class LoadBalancer:
     def _handle_FlowStatsReceived(self, event):
         self.load = {}
         for stat in event.stats:
-            if stat.match.nw_src is None:
+            if stat.match.nw_src is None or "192.168" not in str(stat.match.nw_src):
                 continue
-            log.info(f"Src: {stat.match.nw_src}:{stat.match.tp_src} -> Dst: {stat.match.nw_dst}:{stat.match.tp_dst}, Port: {stat.match.in_port}, Packets: {stat.packet_count}, Bytes: {stat.byte_count}")
+            log.info(f"Src: {stat.match.nw_src}:{stat.match.tp_src} -> Dst: {stat.match.nw_dst}:{stat.match.tp_dst}, Bytes: {stat.byte_count}")
             # Get server ID from src_ip
             # Update the values for the services (port)
             for sid in self.servers:
                 if self.servers[sid]['ip'] == str(stat.match.nw_src):
-                    if self.load[sid] is None:
+                    if self.load.get(sid) is None:
                         self.load[sid] = {}
                     self.load[sid][stat.match.tp_src] = stat.byte_count
-        
+
     def install_flow(self, event, match, actions):
         msg = of.ofp_flow_mod()
         msg.priority = 5000
@@ -215,7 +248,6 @@ class LoadBalancer:
         msg.match = match
         msg.actions = actions
         event.connection.send(msg)
-        log.info(f"Successfully installed flow mod {match.nw_src}:{match.tp_dst}")
 
 def launch():
     core.registerNew(LoadBalancer)
