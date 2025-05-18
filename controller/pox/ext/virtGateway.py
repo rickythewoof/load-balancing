@@ -22,7 +22,7 @@ class ArpResponder(object):
 
     def _handle_ConnectionUp(self,event):
         self.install_flow_rule(event.dpid)
-        log.info("Istruisco il data-plane a riderezxionare verso il controller i pacchetti ARP REQUEST!\n")
+        log.info("Istruisco il data-plane a redirezionare verso il controller i pacchetti ARP REQUEST!\n")
 
 
     def install_flow_rule(self, dpid):

@@ -92,6 +92,8 @@ class LoadBalancer:
             of.ofp_action_output(port=server['port'])
         ]
 
+        self.install_flow(event, match, actions)
+
         # Rewrite destination
         ip_pkt.payload = tcp_pkt
         ip_pkt.dstip = IPAddr(server['ip'])
@@ -111,11 +113,7 @@ class LoadBalancer:
         msg.actions.append(of.ofp_action_output(port=server['port']))
         event.connection.send(msg)
         log.info(f"Forwarded client->server via {key}")
-        
-        # Drop RESET and FINISHED TCP connections and remove flow rule
-        if not tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
-            # Useful to install flow rules
-            self.install_flow(event, match, actions)
+
 
     def handle_server(self, event, ip_pkt, tcp_pkt):
         # Get our original client MAC
@@ -141,6 +139,7 @@ class LoadBalancer:
             of.ofp_action_dl_addr.set_dst(client_mac),
             of.ofp_action_output(port=1)
         ]
+        self.install_flow(event, match, actions)
 
         # SNAT: rewrite source
         ip_pkt.payload = tcp_pkt
@@ -163,11 +162,10 @@ class LoadBalancer:
         # log.info(f"Forwarded server->client for {key}")
 
         # Drop RESET and FINISHED TCP connections
-        if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
-            self.conn_track.pop(key, None)
-            log.info(f"Cleaned up connection {key}")
-        else: # It's not an end, it's useful to install flow rules
-            self.install_flow(event, match, actions)
+        # if tcp_pkt.flags & (tcp_pkt.FIN | tcp_pkt.RST):
+        #     self.conn_track.pop(key, None)
+        #     log.info(f"Cleaned up connection {key}")
+            
 
 
     def select_server(self, ip_pkt, tcp_pkt):
