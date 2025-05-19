@@ -1,7 +1,7 @@
 import socket
 import threading
 
-HOST = '0.0.0.0'  # Listen on all interfaces
+HOST = '0.0.0.0'
 PORT = 4444
 
 def handle_client(conn, addr):
