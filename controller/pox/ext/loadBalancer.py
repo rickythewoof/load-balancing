@@ -242,7 +242,7 @@ class LoadBalancer:
     def install_flow(self, event, match, actions):
         msg = of.ofp_flow_mod()
         msg.priority = 5000
-        msg.idle_timeout = 5 #  Tune timeout to not flood requests
+        msg.idle_timeout = 1
         msg.match = match
         msg.actions = actions
         event.connection.send(msg)

@@ -12,11 +12,12 @@ def simulate_traffic():
             message = f"Packet {i+1}"
             s.sendall(message.encode())
             print(f"[Client] Sent: {message}")
-            time.sleep(random.uniform(0.001, 0.3))  # Random delay between 0.5s to 2s
-        time.sleep(5)
+            time.sleep(random.uniform(0.001, 0.1))  # Random delay between 0.5s to 2s
+        time.sleep(1)
         s.close()
 
 if __name__ == "__main__":
-    time.sleep(3)
+
     while True:
+        
         simulate_traffic()
