@@ -22,7 +22,7 @@ class LoadBalancer:
         self.next_server_id = 1
         self.load = {}
         core.openflow.addListeners(self)
-        Timer(3, self.send_stats_request, recurring=True)
+        Timer(1, self.send_stats_request, recurring=True)
 
     def _handle_ConnectionUp(self, event):
         self.discover_servers(event, max_servers=10)
@@ -230,19 +230,19 @@ class LoadBalancer:
         for stat in event.stats:
             if stat.match.nw_src is None or "192.168" not in str(stat.match.nw_src):
                 continue
-            log.info(f"Src: {stat.match.nw_src}:{stat.match.tp_src} -> Dst: {stat.match.nw_dst}:{stat.match.tp_dst}, Bytes: {stat.byte_count}")
+            # log.info(f"Src: {stat.match.nw_src}:{stat.match.tp_src} -> Dst: {stat.match.nw_dst}:{stat.match.tp_dst}, Bytes: {stat.byte_count}")
             # Get server ID from src_ip
             # Update the values for the services (port)
             for sid in self.servers:
-                if self.servers[sid]['ip'] == str(stat.match.nw_src):
+                if self.servers[sid]['ip'] == str(stat.match.nw_src) or self.servers[sid]['ip'] == str(stat.match.nw_dst):
                     if self.load.get(sid) is None:
                         self.load[sid] = {}
-                    self.load[sid][stat.match.tp_src] = stat.byte_count
+                    self.load[sid][stat.match.tp_src] = self.load[sid].get(stat.match.tp_src, 0) + stat.byte_count
 
     def install_flow(self, event, match, actions):
         msg = of.ofp_flow_mod()
         msg.priority = 5000
-        msg.idle_timeout = 1
+        msg.idle_timeout = 30
         msg.match = match
         msg.actions = actions
         event.connection.send(msg)

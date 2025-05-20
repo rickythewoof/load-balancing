@@ -13,11 +13,9 @@ def simulate_traffic():
             s.sendall(message.encode())
             print(f"[Client] Sent: {message}")
             time.sleep(random.uniform(0.001, 0.1))
-        time.sleep(1)
         s.close()
 
 if __name__ == "__main__":
 
     while True:
-        
         simulate_traffic()

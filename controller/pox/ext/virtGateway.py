@@ -14,7 +14,7 @@ INT_GW_MAC = EthAddr("01:00:00:00:00:01")
 
 log = core.getLogger()
 
-class ArpResponder(object):
+class VirtGateway(object):
     def __init__(self):
         core.openflow.addListeners(self)
         log.info("modulo avviato con successo!\n")
@@ -96,5 +96,5 @@ class ArpResponder(object):
             
 
 def launch():
-    core.registerNew(ArpResponder)
+    core.registerNew(VirtGateway)
     
